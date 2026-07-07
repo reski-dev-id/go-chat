@@ -1,94 +1,92 @@
 # Chat MVP
 
 A production-ready realtime chat application built with **Go**, **Gin**,
-**WebSocket**, **PostgreSQL**, **Redis**, and **Kafka**, following
-**Clean Architecture** and **Dependency Injection** principles.
+**WebSocket**, **PostgreSQL**, and **Redis Streams**, following **Clean
+Architecture** and **Manual Dependency Injection**.
 
 ------------------------------------------------------------------------
 
-## Overview
+# Overview
 
-Chat MVP is a lightweight, scalable, and maintainable backend service
-for realtime one-to-one messaging. The project focuses on building a
-solid foundation that can later evolve into a production-scale messaging
-platform.
+Chat MVP is a backend service for realtime one-to-one messaging inspired
+by messaging applications such as WhatsApp.
 
-This repository is intentionally scoped as an MVP while keeping the
-architecture extensible for future features such as group chat, read
-receipts, typing indicators, attachments, notifications, and search.
+The project intentionally focuses on a small but production-ready
+feature set while maintaining an architecture that can be extended in
+the future.
 
 ------------------------------------------------------------------------
 
-## Tech Stack
+# Tech Stack
 
-### Backend
+## Backend
 
 -   Go 1.26+
 -   Gin
 
-### Realtime
+## Realtime
 
 -   WebSocket
 
-### Database
+## Database
 
 -   PostgreSQL
 
-### Cache
+## Redis
 
--   Redis
+-   Redis Cache
+-   Redis Streams
+-   Consumer Groups
+-   Presence
+-   Session Storage
 
-### Event Streaming
-
--   Kafka
-
-### Architecture
+## Architecture
 
 -   Clean Architecture
--   Repository Pattern
 -   Manual Dependency Injection
+-   Repository Pattern
 -   Service (Use Case) Layer
 -   Domain Driven Module Separation
 
-### Infrastructure
+## Infrastructure
 
 -   Docker
 -   Docker Compose
 
-### Documentation
+## Documentation
 
 -   Swagger / OpenAPI
 
 ------------------------------------------------------------------------
 
-# Architecture
+# High Level Architecture
 
 ``` text
-                    Client
-             (Web / Mobile App)
-                REST + WebSocket
-                       │
-                       ▼
-              +-------------------+
-              |   Gin API Server  |
-              |  REST + WebSocket |
-              +---------+---------+
-                        │
-                  Dependency Injection
-                        │
-      +-----------------+------------------+
-      |                 |                  |
-      ▼                 ▼                  ▼
-   Auth Module      User Module      Chat Module
-      │                 │                  │
-      +-----------------+------------------+
-                        ▼
-                 Service / Use Case
-                        │
-          +-------------+-------------+
-          |             |             |
-          ▼             ▼             ▼
-     PostgreSQL      Redis         Kafka
+                 Client
+          (Web / Mobile App)
+            REST + WebSocket
+                   │
+                   ▼
+          +-------------------+
+          |   Gin API Server  |
+          | REST + WebSocket  |
+          +---------+---------+
+                    │
+             Dependency Injection
+                    │
+      +-------------+-------------+
+      |             |             |
+      ▼             ▼             ▼
+   Auth         Conversation    Message
+      │             │             │
+      +-------------+-------------+
+                    ▼
+             Service / Use Case
+                    │
+          +---------+---------+
+          |                   |
+          ▼                   ▼
+     PostgreSQL        Redis Streams
 ```
 
 ------------------------------------------------------------------------
@@ -97,24 +95,24 @@ receipts, typing indicators, attachments, notifications, and search.
 
 ``` text
 Delivery Layer
-    │
+      │
 Use Case Layer
-    │
+      │
 Domain Layer
-    │
+      │
 Infrastructure Layer
 ```
 
-Dependency direction:
+Dependency flow:
 
 ``` text
-Handler
-   │
-Service
-   │
-Repository Interface
-   │
-Repository Implementation
+HTTP / WebSocket Handler
+          │
+       Service
+          │
+ Repository Interface
+          │
+ Repository Implementation
 ```
 
 ------------------------------------------------------------------------
@@ -140,15 +138,54 @@ Repository Implementation
 
 ## Messaging
 
--   Send Message
--   Receive Message (Realtime)
+-   Send Text Message
+-   Receive Realtime Message
 -   Message History
 
 ## WebSocket
 
 -   Persistent Connection
--   Heartbeat (Ping / Pong)
--   Automatic Reconnect Support
+-   Heartbeat (Ping/Pong)
+-   Automatic Reconnect
+
+------------------------------------------------------------------------
+
+# Redis Streams
+
+Redis Streams is used as the internal event bus.
+
+Example stream:
+
+``` text
+stream:messages
+```
+
+Flow:
+
+``` text
+Save Message
+      │
+      ▼
+PostgreSQL
+      │
+      ▼
+XADD stream:messages
+      │
+      ▼
+Consumer Group
+      │
+      ▼
+WebSocket Hub
+      │
+      ▼
+Recipient
+```
+
+Redis is also responsible for:
+
+-   Online presence
+-   Session storage
+-   Temporary cache
 
 ------------------------------------------------------------------------
 
@@ -169,8 +206,8 @@ chat-mvp/
 │   ├── repository/
 │   │   └── postgres/
 │   ├── service/
-│   ├── kafka/
-│   └── redis/
+│   ├── redis/
+│   └── stream/
 ├── pkg/
 │   ├── logger/
 │   ├── response/
@@ -187,44 +224,15 @@ chat-mvp/
 
 ------------------------------------------------------------------------
 
-# High Level Flow
-
-``` text
-Client
-   │
-REST Login
-   │
-JWT
-   │
-WebSocket Connect
-   │
-Send Message
-   │
-Save Message
-   │
-PostgreSQL
-   │
-Publish Event
-   │
-Kafka
-   │
-Deliver Message
-   │
-Recipient
-```
-
-------------------------------------------------------------------------
-
 # Docker Services
 
 -   chat-api
 -   postgres
 -   redis
--   kafka
 
-Optional:
+Optional
 
--   kafka-ui
+-   redisinsight
 -   pgadmin
 
 ------------------------------------------------------------------------
@@ -235,7 +243,6 @@ Optional:
 
 ``` bash
 git clone https://github.com/<your-username>/chat-mvp.git
-
 cd chat-mvp
 ```
 
@@ -245,7 +252,7 @@ cd chat-mvp
 cp .env.example .env
 ```
 
-## Start
+## Run
 
 ``` bash
 docker compose up -d
@@ -261,7 +268,7 @@ docker compose down
 
 # API Documentation
 
-Swagger will be available after the API starts.
+Swagger:
 
 ``` text
 http://localhost:8080/swagger/index.html
@@ -271,28 +278,27 @@ http://localhost:8080/swagger/index.html
 
 # Design Principles
 
--   Single deployable backend service
+-   Clean Architecture
+-   Manual Dependency Injection
+-   Thin Handlers
 -   Stateless API
 -   PostgreSQL as the source of truth
--   Redis for transient state and caching
--   Kafka for asynchronous event processing
--   Thin handlers
--   Business logic isolated in services
+-   Redis Streams for asynchronous event processing
 -   Interface-based dependency inversion
--   Manual dependency injection
--   Production-oriented project structure
+-   Modular project structure
 
 ------------------------------------------------------------------------
 
-# Roadmap
+# MVP Scope
 
--   Authentication
+-   User Authentication
+-   JWT
 -   One-to-One Chat
--   Conversation
+-   Conversation Management
 -   Message History
--   WebSocket
+-   Realtime Messaging
 -   Docker Deployment
 
 
--------------------------------
+------------------------------------------------------------------------
 
