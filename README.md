@@ -1,92 +1,77 @@
 # Chat MVP
 
 A production-ready realtime chat application built with **Go**, **Gin**,
-**WebSocket**, **PostgreSQL**, and **Redis Streams**, following **Clean
-Architecture** and **Manual Dependency Injection**.
+**WebSocket**, **PostgreSQL**, **Redis**, and **Redis Streams**,
+following **Clean Architecture** and **Manual Dependency Injection**.
+
+The project also includes a separate **Notification Service** built with
+**Spring Boot 3 (Java 21)** to demonstrate a hybrid microservice
+architecture.
 
 ------------------------------------------------------------------------
 
 # Overview
 
-Chat MVP is a backend service for realtime one-to-one messaging inspired
-by messaging applications such as WhatsApp.
+Chat MVP focuses on building a production-ready backend for realtime
+one-to-one messaging. The main application is implemented in Go, while
+asynchronous notifications are handled by an independent Spring Boot
+service.
 
-The project intentionally focuses on a small but production-ready
-feature set while maintaining an architecture that can be extended in
-the future.
+This architecture keeps the MVP simple while introducing practical
+microservice concepts.
 
 ------------------------------------------------------------------------
 
 # Tech Stack
 
-## Backend
+## Chat API
 
 -   Go 1.26+
 -   Gin
-
-## Realtime
-
 -   WebSocket
-
-## Database
-
 -   PostgreSQL
-
-## Redis
-
--   Redis Cache
+-   Redis
 -   Redis Streams
--   Consumer Groups
--   Presence
--   Session Storage
-
-## Architecture
-
--   Clean Architecture
--   Manual Dependency Injection
--   Repository Pattern
--   Service (Use Case) Layer
--   Domain Driven Module Separation
-
-## Infrastructure
-
+-   Swagger
 -   Docker
--   Docker Compose
 
-## Documentation
+## Notification Service
 
--   Swagger / OpenAPI
+-   Java 21
+-   Spring Boot 3
+-   Maven
+-   Spring Data Redis
+-   Spring Mail
+-   Docker
 
 ------------------------------------------------------------------------
 
-# High Level Architecture
+# Architecture
 
 ``` text
-                 Client
-          (Web / Mobile App)
+                  Client
+             (Web / Mobile)
             REST + WebSocket
-                   │
-                   ▼
-          +-------------------+
-          |   Gin API Server  |
-          | REST + WebSocket  |
-          +---------+---------+
                     │
-             Dependency Injection
-                    │
-      +-------------+-------------+
-      |             |             |
-      ▼             ▼             ▼
-   Auth         Conversation    Message
-      │             │             │
-      +-------------+-------------+
                     ▼
-             Service / Use Case
+           +------------------+
+           |    Go Chat API   |
+           | REST + WebSocket |
+           +--------+---------+
                     │
-          +---------+---------+
-          |                   |
-          ▼                   ▼
-     PostgreSQL        Redis Streams
+          Save Message + XADD
+                    │
+                    ▼
+            Redis Streams
+                    │
+        +-----------+-----------+
+        │                       │
+        ▼                       ▼
+ Message Delivery        Notification Service
+   Worker (Go)          Spring Boot (Java 21)
+                                │
+                                ▼
+                      Email / Push (Future)
 ```
 
 ------------------------------------------------------------------------
@@ -103,17 +88,7 @@ Domain Layer
 Infrastructure Layer
 ```
 
-Dependency flow:
-
-``` text
-HTTP / WebSocket Handler
-          │
-       Service
-          │
- Repository Interface
-          │
- Repository Implementation
-```
+Dependencies always point inward.
 
 ------------------------------------------------------------------------
 
@@ -127,7 +102,7 @@ HTTP / WebSocket Handler
 
 ## User
 
--   User Profile
+-   Profile
 -   Online Status
 -   Last Seen
 
@@ -145,14 +120,18 @@ HTTP / WebSocket Handler
 ## WebSocket
 
 -   Persistent Connection
--   Heartbeat (Ping/Pong)
+-   Ping / Pong
 -   Automatic Reconnect
+
+## Notification
+
+-   Consume message events
+-   Send email notification
+-   Extensible for Push Notification and SMS
 
 ------------------------------------------------------------------------
 
 # Redis Streams
-
-Redis Streams is used as the internal event bus.
 
 Example stream:
 
@@ -160,32 +139,21 @@ Example stream:
 stream:messages
 ```
 
-Flow:
+Event flow:
 
 ``` text
-Save Message
-      │
-      ▼
-PostgreSQL
-      │
-      ▼
+User A
+   │
+Send Message
+   │
+Save PostgreSQL
+   │
 XADD stream:messages
-      │
-      ▼
+   │
 Consumer Group
-      │
-      ▼
-WebSocket Hub
-      │
-      ▼
-Recipient
+   ├──────────────► WebSocket Delivery Worker
+   └──────────────► Notification Service
 ```
-
-Redis is also responsible for:
-
--   Online presence
--   Session storage
--   Temporary cache
 
 ------------------------------------------------------------------------
 
@@ -194,43 +162,54 @@ Redis is also responsible for:
 ``` text
 chat-mvp/
 ├── cmd/
-│   └── server/
 ├── internal/
 │   ├── bootstrap/
 │   ├── config/
 │   ├── delivery/
-│   │   ├── http/
-│   │   └── websocket/
 │   ├── domain/
 │   ├── middleware/
 │   ├── repository/
-│   │   └── postgres/
 │   ├── service/
 │   ├── redis/
 │   └── stream/
 ├── pkg/
-│   ├── logger/
-│   ├── response/
-│   └── validator/
 ├── docs/
 ├── migrations/
 ├── docker/
 ├── Dockerfile
 ├── docker-compose.yml
 ├── Makefile
-├── README.md
-└── .env.example
+└── README.md
+```
+
+Notification service:
+
+``` text
+notification-service/
+├── src/main/java/
+│   ├── config/
+│   ├── consumer/
+│   ├── service/
+│   ├── mail/
+│   ├── dto/
+│   └── util/
+├── Dockerfile
+├── pom.xml
+└── README.md
 ```
 
 ------------------------------------------------------------------------
 
 # Docker Services
 
+Core:
+
 -   chat-api
 -   postgres
 -   redis
+-   notification-service
 
-Optional
+Optional:
 
 -   redisinsight
 -   pgadmin
@@ -239,36 +218,20 @@ Optional
 
 # Quick Start
 
-## Clone
-
 ``` bash
 git clone https://github.com/<your-username>/chat-mvp.git
 cd chat-mvp
-```
 
-## Configure
-
-``` bash
 cp .env.example .env
-```
 
-## Run
-
-``` bash
 docker compose up -d
-```
-
-## Stop
-
-``` bash
-docker compose down
 ```
 
 ------------------------------------------------------------------------
 
 # API Documentation
 
-Swagger:
+Swagger
 
 ``` text
 http://localhost:8080/swagger/index.html
@@ -280,25 +243,38 @@ http://localhost:8080/swagger/index.html
 
 -   Clean Architecture
 -   Manual Dependency Injection
+-   Repository Pattern
 -   Thin Handlers
 -   Stateless API
 -   PostgreSQL as the source of truth
--   Redis Streams for asynchronous event processing
--   Interface-based dependency inversion
--   Modular project structure
+-   Redis Streams as the event bus
+-   Separate Spring Boot Notification Service
 
 ------------------------------------------------------------------------
 
 # MVP Scope
 
--   User Authentication
--   JWT
+-   Authentication
+-   User Management
 -   One-to-One Chat
--   Conversation Management
+-   Conversation
 -   Message History
 -   Realtime Messaging
+-   Email Notification
 -   Docker Deployment
 
+------------------------------------------------------------------------
+
+# Future Roadmap
+
+-   Group Chat
+-   Read Receipts
+-   Typing Indicator
+-   Attachments
+-   Push Notifications
+-   Search
+-   Multi-device Support
+-   Kubernetes
 
 ------------------------------------------------------------------------
 
